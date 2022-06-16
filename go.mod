@@ -18,6 +18,7 @@ require (
 	github.com/golang/mock v1.6.0
 	github.com/google/go-github/v35 v35.3.0
 	github.com/google/uuid v1.3.0
+	github.com/hashicorp/go-multierror v1.1.1
 	github.com/mrajashree/etcdadm-controller v1.0.0-rc3
 	github.com/onsi/gomega v1.19.0
 	github.com/pkg/errors v0.9.1
@@ -98,6 +99,7 @@ require (
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/googleapis/gnostic v0.5.5 // indirect
 	github.com/gorilla/mux v1.8.0 // indirect
+	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/imdario/mergo v0.3.12 // indirect
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
