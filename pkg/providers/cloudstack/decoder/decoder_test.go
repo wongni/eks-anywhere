@@ -132,13 +132,10 @@ func TestCloudStackConfigDecoder(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(tt *testing.T) {
-			var tctx testContext
-			tctx.backupContext()
-
 			g := NewWithT(t)
 			configString := test.ReadFile(t, tc.configFile)
 			encodedConfig := base64.StdEncoding.EncodeToString([]byte(configString))
-			os.Setenv(decoder.EksacloudStackCloudConfigB64SecretKey, encodedConfig)
+			tt.Setenv(decoder.EksacloudStackCloudConfigB64SecretKey, encodedConfig)
 
 			gotConfig, err := decoder.ParseCloudStackSecret()
 			if tc.wantErr {
@@ -154,16 +151,11 @@ func TestCloudStackConfigDecoder(t *testing.T) {
 }
 
 func TestCloudStackConfigDecoderInvalidEncoding(t *testing.T) {
-	var tctx testContext
-	tctx.backupContext()
-	os.Clearenv()
-
 	g := NewWithT(t)
-	os.Setenv(decoder.EksacloudStackCloudConfigB64SecretKey, "xxx")
+	t.Setenv(decoder.EksacloudStackCloudConfigB64SecretKey, "xxx")
 
 	_, err := decoder.ParseCloudStackSecret()
 	g.Expect(err).NotTo(BeNil())
-	tctx.restoreContext()
 }
 
 func TestCloudStackConfigDecoderNoEnvVariable(t *testing.T) {
