@@ -12,6 +12,7 @@ import (
 
 	"github.com/aws/eks-anywhere/internal/test"
 	"github.com/aws/eks-anywhere/pkg/api/v1alpha1"
+	"github.com/aws/eks-anywhere/pkg/providers/cloudstack/decoder"
 	"github.com/aws/eks-anywhere/pkg/providers/cloudstack/mocks"
 )
 
@@ -42,18 +43,16 @@ func TestValidateCloudStackDatacenterConfig(t *testing.T) {
 	ctx := context.Background()
 	setupContext()
 	cmk := mocks.NewMockProviderCmkClient(gomock.NewController(t))
-	validator := NewValidator(cmk)
+	validator := NewValidator(CmkClientMap{decoder.CloudStackGlobalAZ: cmk})
 
-	cloudstackDatacenter, err := v1alpha1.GetCloudStackDatacenterConfig(path.Join(testDataDir, testClusterConfigMainFilename))
+	datacenterConfig, err := v1alpha1.GetCloudStackDatacenterConfig(path.Join(testDataDir, testClusterConfigMainFilename))
 	if err != nil {
 		t.Fatalf("unable to get datacenter config from file")
 	}
 
-	cmk.EXPECT().ValidateZonesPresent(ctx, cloudstackDatacenter.Spec.Zones).Return([]v1alpha1.CloudStackResourceIdentifier{{Name: "zone1", Id: "4e3b338d-87a6-4189-b931-a1747edeea8f"}}, nil)
-	cmk.EXPECT().ValidateDomainPresent(ctx, cloudstackDatacenter.Spec.Domain).Return(v1alpha1.CloudStackResourceIdentifier{Id: "5300cdac-74d5-11ec-8696-c81f66d3e965", Name: cloudstackDatacenter.Spec.Domain}, nil)
-	cmk.EXPECT().ValidateAccountPresent(ctx, gomock.Any(), gomock.Any()).Return(nil)
-	cmk.EXPECT().ValidateNetworkPresent(ctx, gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), false).Return(nil)
-	err = validator.ValidateCloudStackDatacenterConfig(ctx, cloudstackDatacenter)
+	setupMockForDatacenterConfigValidation(cmk, ctx, datacenterConfig)
+
+	err = validator.ValidateCloudStackDatacenterConfig(ctx, datacenterConfig)
 	if err != nil {
 		t.Fatalf("failed to validate CloudStackDataCenterConfig: %v", err)
 	}
@@ -62,11 +61,14 @@ func TestValidateCloudStackDatacenterConfig(t *testing.T) {
 func TestValidateCloudStackConnection(t *testing.T) {
 	ctx := context.Background()
 	cmk := mocks.NewMockProviderCmkClient(gomock.NewController(t))
-	validator := NewValidator(cmk)
+	validator := NewValidator(CmkClientMap{decoder.CloudStackGlobalAZ: cmk})
+	datacenterConfig, err := v1alpha1.GetCloudStackDatacenterConfig(path.Join(testDataDir, testClusterConfigMainFilename))
+	if err != nil {
+		t.Fatalf("unable to get datacenter config from file")
+	}
 
 	cmk.EXPECT().ValidateCloudStackConnection(ctx).Return(nil)
-	err := validator.validateCloudStackAccess(ctx)
-	if err != nil {
+	if err := validator.validateCloudStackAccess(ctx, datacenterConfig); err != nil {
 		t.Fatalf("failed to validate CloudStackDataCenterConfig: %v", err)
 	}
 }
@@ -74,7 +76,7 @@ func TestValidateCloudStackConnection(t *testing.T) {
 func TestValidateMachineConfigsNoControlPlaneEndpointIP(t *testing.T) {
 	ctx := context.Background()
 	cmk := mocks.NewMockProviderCmkClient(gomock.NewController(t))
-	validator := NewValidator(cmk)
+	validator := NewValidator(CmkClientMap{decoder.CloudStackGlobalAZ: cmk})
 	clusterSpec := test.NewFullClusterSpec(t, path.Join(testDataDir, testClusterConfigMainFilename))
 	datacenterConfig, err := v1alpha1.GetCloudStackDatacenterConfig(path.Join(testDataDir, testClusterConfigMainFilename))
 	if err != nil {
@@ -85,6 +87,8 @@ func TestValidateMachineConfigsNoControlPlaneEndpointIP(t *testing.T) {
 		datacenterConfig: datacenterConfig,
 	}
 	clusterSpec.Cluster.Spec.ControlPlaneConfiguration.Endpoint.Host = ""
+
+	setupMockForDatacenterConfigValidation(cmk, ctx, datacenterConfig)
 
 	err = validator.ValidateClusterMachineConfigs(ctx, cloudStackClusterSpec)
 
@@ -105,10 +109,8 @@ func TestValidateDatacenterConfigsNoNetwork(t *testing.T) {
 		datacenterConfig:     datacenterConfig,
 		machineConfigsLookup: nil,
 	}
-	validator := NewValidator(cmk)
-	cmk.EXPECT().ValidateZonesPresent(ctx, gomock.Any()).Return([]v1alpha1.CloudStackResourceIdentifier{{Name: "zone1", Id: "4e3b338d-87a6-4189-b931-a1747edeea8f"}}, nil)
-	cmk.EXPECT().ValidateDomainPresent(ctx, gomock.Any()).Return(v1alpha1.CloudStackResourceIdentifier{Id: "5300cdac-74d5-11ec-8696-c81f66d3e965", Name: "ROOT"}, nil)
-	cmk.EXPECT().ValidateAccountPresent(ctx, gomock.Any(), gomock.Any()).Return(nil)
+	validator := NewValidator(CmkClientMap{decoder.CloudStackGlobalAZ: cmk})
+	setupMockForDatacenterConfigValidation(cmk, ctx, datacenterConfig)
 
 	datacenterConfig.Spec.Zones[0].Network.Id = ""
 	datacenterConfig.Spec.Zones[0].Network.Name = ""
@@ -130,7 +132,8 @@ func TestValidateDatacenterBadManagementEndpoint(t *testing.T) {
 		datacenterConfig:     datacenterConfig,
 		machineConfigsLookup: nil,
 	}
-	validator := NewValidator(cmk)
+	validator := NewValidator(CmkClientMap{decoder.CloudStackGlobalAZ: cmk})
+	setupMockForDatacenterConfigValidation(cmk, ctx, datacenterConfig)
 
 	datacenterConfig.Spec.ManagementApiEndpoint = ":1234.5234"
 	err = validator.ValidateCloudStackDatacenterConfig(ctx, cloudStackClusterSpec.datacenterConfig)
@@ -152,12 +155,13 @@ func TestValidateDatacenterInconsistentManagementEndpoints(t *testing.T) {
 		datacenterConfig:     datacenterConfig,
 		machineConfigsLookup: nil,
 	}
-	validator := NewValidator(cmk)
+	validator := NewValidator(CmkClientMap{decoder.CloudStackGlobalAZ: cmk})
+	setupMockForDatacenterConfigValidation(cmk, ctx, datacenterConfig)
 
 	datacenterConfig.Spec.ManagementApiEndpoint = "abcefg.com"
 	err = validator.ValidateCloudStackDatacenterConfig(ctx, cloudStackClusterSpec.datacenterConfig)
 
-	thenErrorExpected(t, "cluster spec management url (abcefg.com) is not found in the cloudstack secret", err)
+	thenErrorExpected(t, "cloudstack secret management url (http://127.16.0.1:8080/client/api) differs from cluster spec management url (abcefg.com)", err)
 }
 
 func TestSetupAndValidateDiskOfferingEmpty(t *testing.T) {
@@ -168,7 +172,7 @@ func TestSetupAndValidateDiskOfferingEmpty(t *testing.T) {
 		t.Fatalf("unable to get machine configs from file %s", testClusterConfigMainFilename)
 	}
 	clusterSpec := test.NewFullClusterSpec(t, path.Join(testDataDir, testClusterConfigMainFilename))
-	validator := NewValidator(cmk)
+	validator := NewValidator(CmkClientMap{decoder.CloudStackGlobalAZ: cmk})
 	datacenterConfig, err := v1alpha1.GetCloudStackDatacenterConfig(path.Join(testDataDir, testClusterConfigMainFilename))
 	if err != nil {
 		t.Fatalf("unable to get datacenter config from file")
@@ -185,7 +189,8 @@ func TestSetupAndValidateDiskOfferingEmpty(t *testing.T) {
 	etcdMachineConfigName := clusterSpec.Cluster.Spec.ExternalEtcdConfiguration.MachineGroupRef.Name
 	cloudStackClusterSpec.machineConfigsLookup[etcdMachineConfigName].Spec.DiskOffering = v1alpha1.CloudStackResourceDiskOffering{}
 
-	cmk.EXPECT().ValidateZonesPresent(gomock.Any(), gomock.Any()).Times(3).Return([]v1alpha1.CloudStackResourceIdentifier{{Name: "zone1", Id: "4e3b338d-87a6-4189-b931-a1747edeea8f"}}, nil)
+	setupMockForDatacenterConfigValidation(cmk, ctx, datacenterConfig)
+
 	cmk.EXPECT().ValidateTemplatePresent(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(3)
 	cmk.EXPECT().ValidateServiceOfferingPresent(gomock.Any(), gomock.Any(), gomock.Any()).Times(3)
 	cmk.EXPECT().ValidateDiskOfferingPresent(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
@@ -205,7 +210,7 @@ func TestSetupAndValidateValidDiskOffering(t *testing.T) {
 		t.Fatalf("unable to get machine configs from file %s", testClusterConfigMainFilename)
 	}
 	clusterSpec := test.NewFullClusterSpec(t, path.Join(testDataDir, testClusterConfigMainFilename))
-	validator := NewValidator(cmk)
+	validator := NewValidator(CmkClientMap{decoder.CloudStackGlobalAZ: cmk})
 	datacenterConfig, err := v1alpha1.GetCloudStackDatacenterConfig(path.Join(testDataDir, testClusterConfigMainFilename))
 	if err != nil {
 		t.Fatalf("unable to get datacenter config from file")
@@ -230,7 +235,8 @@ func TestSetupAndValidateValidDiskOffering(t *testing.T) {
 	etcdMachineConfigName := clusterSpec.Cluster.Spec.ExternalEtcdConfiguration.MachineGroupRef.Name
 	cloudStackClusterSpec.machineConfigsLookup[etcdMachineConfigName].Spec.DiskOffering = v1alpha1.CloudStackResourceDiskOffering{}
 
-	cmk.EXPECT().ValidateZonesPresent(gomock.Any(), gomock.Any()).Times(3).Return([]v1alpha1.CloudStackResourceIdentifier{{Name: "zone1", Id: "4e3b338d-87a6-4189-b931-a1747edeea8f"}}, nil)
+	setupMockForDatacenterConfigValidation(cmk, ctx, datacenterConfig)
+
 	cmk.EXPECT().ValidateTemplatePresent(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(3)
 	cmk.EXPECT().ValidateServiceOfferingPresent(gomock.Any(), gomock.Any(), gomock.Any()).Times(3)
 	cmk.EXPECT().ValidateDiskOfferingPresent(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
@@ -250,7 +256,7 @@ func TestSetupAndValidateInvalidDiskOfferingNotPresent(t *testing.T) {
 		t.Fatalf("unable to get machine configs from file %s", testClusterConfigMainFilename)
 	}
 	clusterSpec := test.NewFullClusterSpec(t, path.Join(testDataDir, testClusterConfigMainFilename))
-	validator := NewValidator(cmk)
+	validator := NewValidator(CmkClientMap{decoder.CloudStackGlobalAZ: cmk})
 	datacenterConfig, err := v1alpha1.GetCloudStackDatacenterConfig(path.Join(testDataDir, testClusterConfigMainFilename))
 	if err != nil {
 		t.Fatalf("unable to get datacenter config from file")
@@ -275,7 +281,8 @@ func TestSetupAndValidateInvalidDiskOfferingNotPresent(t *testing.T) {
 	etcdMachineConfigName := clusterSpec.Cluster.Spec.ExternalEtcdConfiguration.MachineGroupRef.Name
 	cloudStackClusterSpec.machineConfigsLookup[etcdMachineConfigName].Spec.DiskOffering = v1alpha1.CloudStackResourceDiskOffering{}
 
-	cmk.EXPECT().ValidateZonesPresent(gomock.Any(), gomock.Any()).AnyTimes().Return([]v1alpha1.CloudStackResourceIdentifier{{Name: "zone1", Id: "4e3b338d-87a6-4189-b931-a1747edeea8f"}}, nil)
+	setupMockForDatacenterConfigValidation(cmk, ctx, datacenterConfig)
+
 	cmk.EXPECT().ValidateTemplatePresent(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	cmk.EXPECT().ValidateServiceOfferingPresent(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	cmk.EXPECT().ValidateDiskOfferingPresent(gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(errors.New("match me"))
@@ -294,7 +301,7 @@ func TestSetupAndValidateInValidDiskOfferingBadMountPath(t *testing.T) {
 		t.Fatalf("unable to get machine configs from file %s", testClusterConfigMainFilename)
 	}
 	clusterSpec := test.NewFullClusterSpec(t, path.Join(testDataDir, testClusterConfigMainFilename))
-	validator := NewValidator(cmk)
+	validator := NewValidator(CmkClientMap{decoder.CloudStackGlobalAZ: cmk})
 	datacenterConfig, err := v1alpha1.GetCloudStackDatacenterConfig(path.Join(testDataDir, testClusterConfigMainFilename))
 	if err != nil {
 		t.Fatalf("unable to get datacenter config from file")
@@ -319,7 +326,8 @@ func TestSetupAndValidateInValidDiskOfferingBadMountPath(t *testing.T) {
 	etcdMachineConfigName := clusterSpec.Cluster.Spec.ExternalEtcdConfiguration.MachineGroupRef.Name
 	cloudStackClusterSpec.machineConfigsLookup[etcdMachineConfigName].Spec.DiskOffering = v1alpha1.CloudStackResourceDiskOffering{}
 
-	cmk.EXPECT().ValidateZonesPresent(gomock.Any(), gomock.Any()).AnyTimes().Return([]v1alpha1.CloudStackResourceIdentifier{{Name: "zone1", Id: "4e3b338d-87a6-4189-b931-a1747edeea8f"}}, nil)
+	setupMockForDatacenterConfigValidation(cmk, ctx, datacenterConfig)
+
 	cmk.EXPECT().ValidateTemplatePresent(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	cmk.EXPECT().ValidateServiceOfferingPresent(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	cmk.EXPECT().ValidateAffinityGroupsPresent(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
@@ -337,7 +345,7 @@ func TestSetupAndValidateInValidDiskOfferingEmptyDevice(t *testing.T) {
 		t.Fatalf("unable to get machine configs from file %s", testClusterConfigMainFilename)
 	}
 	clusterSpec := test.NewFullClusterSpec(t, path.Join(testDataDir, testClusterConfigMainFilename))
-	validator := NewValidator(cmk)
+	validator := NewValidator(CmkClientMap{decoder.CloudStackGlobalAZ: cmk})
 	datacenterConfig, err := v1alpha1.GetCloudStackDatacenterConfig(path.Join(testDataDir, testClusterConfigMainFilename))
 	if err != nil {
 		t.Fatalf("unable to get datacenter config from file")
@@ -362,7 +370,8 @@ func TestSetupAndValidateInValidDiskOfferingEmptyDevice(t *testing.T) {
 	etcdMachineConfigName := clusterSpec.Cluster.Spec.ExternalEtcdConfiguration.MachineGroupRef.Name
 	cloudStackClusterSpec.machineConfigsLookup[etcdMachineConfigName].Spec.DiskOffering = v1alpha1.CloudStackResourceDiskOffering{}
 
-	cmk.EXPECT().ValidateZonesPresent(gomock.Any(), gomock.Any()).AnyTimes().Return([]v1alpha1.CloudStackResourceIdentifier{{Name: "zone1", Id: "4e3b338d-87a6-4189-b931-a1747edeea8f"}}, nil)
+	setupMockForDatacenterConfigValidation(cmk, ctx, datacenterConfig)
+
 	cmk.EXPECT().ValidateTemplatePresent(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	cmk.EXPECT().ValidateServiceOfferingPresent(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	cmk.EXPECT().ValidateAffinityGroupsPresent(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
@@ -380,7 +389,7 @@ func TestSetupAndValidateInValidDiskOfferingEmptyFilesystem(t *testing.T) {
 		t.Fatalf("unable to get machine configs from file %s", testClusterConfigMainFilename)
 	}
 	clusterSpec := test.NewFullClusterSpec(t, path.Join(testDataDir, testClusterConfigMainFilename))
-	validator := NewValidator(cmk)
+	validator := NewValidator(CmkClientMap{decoder.CloudStackGlobalAZ: cmk})
 	datacenterConfig, err := v1alpha1.GetCloudStackDatacenterConfig(path.Join(testDataDir, testClusterConfigMainFilename))
 	if err != nil {
 		t.Fatalf("unable to get datacenter config from file")
@@ -405,7 +414,8 @@ func TestSetupAndValidateInValidDiskOfferingEmptyFilesystem(t *testing.T) {
 	etcdMachineConfigName := clusterSpec.Cluster.Spec.ExternalEtcdConfiguration.MachineGroupRef.Name
 	cloudStackClusterSpec.machineConfigsLookup[etcdMachineConfigName].Spec.DiskOffering = v1alpha1.CloudStackResourceDiskOffering{}
 
-	cmk.EXPECT().ValidateZonesPresent(gomock.Any(), gomock.Any()).AnyTimes().Return([]v1alpha1.CloudStackResourceIdentifier{{Name: "zone1", Id: "4e3b338d-87a6-4189-b931-a1747edeea8f"}}, nil)
+	setupMockForDatacenterConfigValidation(cmk, ctx, datacenterConfig)
+
 	cmk.EXPECT().ValidateTemplatePresent(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	cmk.EXPECT().ValidateServiceOfferingPresent(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	cmk.EXPECT().ValidateAffinityGroupsPresent(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
@@ -423,7 +433,7 @@ func TestSetupAndValidateInValidDiskOfferingEmptyLabel(t *testing.T) {
 		t.Fatalf("unable to get machine configs from file %s", testClusterConfigMainFilename)
 	}
 	clusterSpec := test.NewFullClusterSpec(t, path.Join(testDataDir, testClusterConfigMainFilename))
-	validator := NewValidator(cmk)
+	validator := NewValidator(CmkClientMap{decoder.CloudStackGlobalAZ: cmk})
 	datacenterConfig, err := v1alpha1.GetCloudStackDatacenterConfig(path.Join(testDataDir, testClusterConfigMainFilename))
 	if err != nil {
 		t.Fatalf("unable to get datacenter config from file")
@@ -448,7 +458,8 @@ func TestSetupAndValidateInValidDiskOfferingEmptyLabel(t *testing.T) {
 	etcdMachineConfigName := clusterSpec.Cluster.Spec.ExternalEtcdConfiguration.MachineGroupRef.Name
 	cloudStackClusterSpec.machineConfigsLookup[etcdMachineConfigName].Spec.DiskOffering = v1alpha1.CloudStackResourceDiskOffering{}
 
-	cmk.EXPECT().ValidateZonesPresent(gomock.Any(), gomock.Any()).AnyTimes().Return([]v1alpha1.CloudStackResourceIdentifier{{Name: "zone1", Id: "4e3b338d-87a6-4189-b931-a1747edeea8f"}}, nil)
+	setupMockForDatacenterConfigValidation(cmk, ctx, datacenterConfig)
+
 	cmk.EXPECT().ValidateTemplatePresent(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	cmk.EXPECT().ValidateServiceOfferingPresent(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	cmk.EXPECT().ValidateAffinityGroupsPresent(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
@@ -466,7 +477,7 @@ func TestSetupAndValidateUsersNil(t *testing.T) {
 		t.Fatalf("unable to get machine configs from file %s", testClusterConfigMainFilename)
 	}
 	clusterSpec := test.NewFullClusterSpec(t, path.Join(testDataDir, testClusterConfigMainFilename))
-	validator := NewValidator(cmk)
+	validator := NewValidator(CmkClientMap{decoder.CloudStackGlobalAZ: cmk})
 	datacenterConfig, err := v1alpha1.GetCloudStackDatacenterConfig(path.Join(testDataDir, testClusterConfigMainFilename))
 	if err != nil {
 		t.Fatalf("unable to get datacenter config from file")
@@ -483,7 +494,8 @@ func TestSetupAndValidateUsersNil(t *testing.T) {
 	etcdMachineConfigName := clusterSpec.Cluster.Spec.ExternalEtcdConfiguration.MachineGroupRef.Name
 	cloudStackClusterSpec.machineConfigsLookup[etcdMachineConfigName].Spec.Users = nil
 
-	cmk.EXPECT().ValidateZonesPresent(gomock.Any(), gomock.Any()).Times(3).Return([]v1alpha1.CloudStackResourceIdentifier{{Name: "zone1", Id: "4e3b338d-87a6-4189-b931-a1747edeea8f"}}, nil)
+	setupMockForDatacenterConfigValidation(cmk, ctx, datacenterConfig)
+
 	cmk.EXPECT().ValidateTemplatePresent(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(3)
 	cmk.EXPECT().ValidateServiceOfferingPresent(gomock.Any(), gomock.Any(), gomock.Any()).Times(3)
 	cmk.EXPECT().ValidateDiskOfferingPresent(gomock.Any(), gomock.Any(), gomock.Any()).Times(3)
@@ -503,7 +515,7 @@ func TestSetupAndValidateRestrictedUserDetails(t *testing.T) {
 		t.Fatalf("unable to get machine configs from file %s", testClusterConfigMainFilename)
 	}
 	clusterSpec := test.NewFullClusterSpec(t, path.Join(testDataDir, testClusterConfigMainFilename))
-	validator := NewValidator(cmk)
+	validator := NewValidator(CmkClientMap{decoder.CloudStackGlobalAZ: cmk})
 	datacenterConfig, err := v1alpha1.GetCloudStackDatacenterConfig(path.Join(testDataDir, testClusterConfigMainFilename))
 	if err != nil {
 		t.Fatalf("unable to get datacenter config from file")
@@ -520,6 +532,8 @@ func TestSetupAndValidateRestrictedUserDetails(t *testing.T) {
 	etcdMachineConfigName := clusterSpec.Cluster.Spec.ExternalEtcdConfiguration.MachineGroupRef.Name
 	cloudStackClusterSpec.machineConfigsLookup[etcdMachineConfigName].Spec.UserCustomDetails = map[string]string{"keyboard": "test"}
 
+	setupMockForDatacenterConfigValidation(cmk, ctx, datacenterConfig)
+
 	err = validator.ValidateClusterMachineConfigs(ctx, cloudStackClusterSpec)
 	if err == nil {
 		t.Fatalf("expected error like 'validation failed: restricted key keyboard found in custom user details' but no error was thrown")
@@ -534,7 +548,7 @@ func TestSetupAndValidateSshAuthorizedKeysNil(t *testing.T) {
 		t.Fatalf("unable to get machine configs from file %s", testClusterConfigMainFilename)
 	}
 	clusterSpec := test.NewFullClusterSpec(t, path.Join(testDataDir, testClusterConfigMainFilename))
-	validator := NewValidator(cmk)
+	validator := NewValidator(CmkClientMap{decoder.CloudStackGlobalAZ: cmk})
 	datacenterConfig, err := v1alpha1.GetCloudStackDatacenterConfig(path.Join(testDataDir, testClusterConfigMainFilename))
 	if err != nil {
 		t.Fatalf("unable to get datacenter config from file")
@@ -551,7 +565,8 @@ func TestSetupAndValidateSshAuthorizedKeysNil(t *testing.T) {
 	etcdMachineConfigName := clusterSpec.Cluster.Spec.ExternalEtcdConfiguration.MachineGroupRef.Name
 	cloudStackClusterSpec.machineConfigsLookup[etcdMachineConfigName].Spec.Users[0].SshAuthorizedKeys = nil
 
-	cmk.EXPECT().ValidateZonesPresent(gomock.Any(), gomock.Any()).Times(3).Return([]v1alpha1.CloudStackResourceIdentifier{{Name: "zone1", Id: "4e3b338d-87a6-4189-b931-a1747edeea8f"}}, nil)
+	setupMockForDatacenterConfigValidation(cmk, ctx, datacenterConfig)
+
 	cmk.EXPECT().ValidateTemplatePresent(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(3)
 	cmk.EXPECT().ValidateServiceOfferingPresent(gomock.Any(), gomock.Any(), gomock.Any()).Times(3)
 	cmk.EXPECT().ValidateDiskOfferingPresent(gomock.Any(), gomock.Any(), gomock.Any()).Times(3)
@@ -562,6 +577,14 @@ func TestSetupAndValidateSshAuthorizedKeysNil(t *testing.T) {
 	}
 }
 
+func setupMockForDatacenterConfigValidation(cmk *mocks.MockProviderCmkClient, ctx context.Context, datacenterConfig *v1alpha1.CloudStackDatacenterConfig) {
+	cmk.EXPECT().ValidateZonesPresent(ctx, datacenterConfig.Spec.Zones).AnyTimes().Return([]v1alpha1.CloudStackResourceIdentifier{{Name: "zone1", Id: "4e3b338d-87a6-4189-b931-a1747edeea8f"}}, nil)
+	cmk.EXPECT().ValidateDomainPresent(ctx, datacenterConfig.Spec.Domain).AnyTimes().Return(v1alpha1.CloudStackResourceIdentifier{Id: "5300cdac-74d5-11ec-8696-c81f66d3e965", Name: datacenterConfig.Spec.Domain}, nil)
+	cmk.EXPECT().ValidateAccountPresent(ctx, gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
+	cmk.EXPECT().ValidateNetworkPresent(ctx, gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
+	cmk.EXPECT().GetManagementApiEndpoint(ctx).AnyTimes().Return("http://127.16.0.1:8080/client/api")
+}
+
 func TestSetupAndValidateCreateClusterCPMachineGroupRefNil(t *testing.T) {
 	ctx := context.Background()
 	cmk := mocks.NewMockProviderCmkClient(gomock.NewController(t))
@@ -570,7 +593,7 @@ func TestSetupAndValidateCreateClusterCPMachineGroupRefNil(t *testing.T) {
 		t.Fatalf("unable to get machine configs from file %s", testClusterConfigMainFilename)
 	}
 	clusterSpec := test.NewFullClusterSpec(t, path.Join(testDataDir, testClusterConfigMainFilename))
-	validator := NewValidator(cmk)
+	validator := NewValidator(CmkClientMap{decoder.CloudStackGlobalAZ: cmk})
 	datacenterConfig, err := v1alpha1.GetCloudStackDatacenterConfig(path.Join(testDataDir, testClusterConfigMainFilename))
 	if err != nil {
 		t.Fatalf("unable to get datacenter config from file")
@@ -581,6 +604,8 @@ func TestSetupAndValidateCreateClusterCPMachineGroupRefNil(t *testing.T) {
 		machineConfigsLookup: machineConfigs,
 	}
 	clusterSpec.Cluster.Spec.ControlPlaneConfiguration.MachineGroupRef = nil
+
+	setupMockForDatacenterConfigValidation(cmk, ctx, datacenterConfig)
 
 	err = validator.ValidateClusterMachineConfigs(ctx, cloudStackClusterSpec)
 	thenErrorExpected(t, "must specify machineGroupRef for control plane", err)
@@ -594,7 +619,7 @@ func TestSetupAndValidateCreateClusterWorkerMachineGroupRefNil(t *testing.T) {
 		t.Fatalf("unable to get machine configs from file %s", testClusterConfigMainFilename)
 	}
 	clusterSpec := test.NewFullClusterSpec(t, path.Join(testDataDir, testClusterConfigMainFilename))
-	validator := NewValidator(cmk)
+	validator := NewValidator(CmkClientMap{decoder.CloudStackGlobalAZ: cmk})
 	datacenterConfig, err := v1alpha1.GetCloudStackDatacenterConfig(path.Join(testDataDir, testClusterConfigMainFilename))
 	if err != nil {
 		t.Fatalf("unable to get datacenter config from file")
@@ -605,6 +630,8 @@ func TestSetupAndValidateCreateClusterWorkerMachineGroupRefNil(t *testing.T) {
 		machineConfigsLookup: machineConfigs,
 	}
 	clusterSpec.Cluster.Spec.WorkerNodeGroupConfigurations[0].MachineGroupRef = nil
+
+	setupMockForDatacenterConfigValidation(cmk, ctx, datacenterConfig)
 
 	err = validator.ValidateClusterMachineConfigs(ctx, cloudStackClusterSpec)
 	thenErrorExpected(t, "must specify machineGroupRef for worker nodes", err)
@@ -618,7 +645,7 @@ func TestSetupAndValidateCreateClusterEtcdMachineGroupRefNil(t *testing.T) {
 		t.Fatalf("unable to get machine configs from file %s", testClusterConfigMainFilename)
 	}
 	clusterSpec := test.NewFullClusterSpec(t, path.Join(testDataDir, testClusterConfigMainFilename))
-	validator := NewValidator(cmk)
+	validator := NewValidator(CmkClientMap{decoder.CloudStackGlobalAZ: cmk})
 	datacenterConfig, err := v1alpha1.GetCloudStackDatacenterConfig(path.Join(testDataDir, testClusterConfigMainFilename))
 	if err != nil {
 		t.Fatalf("unable to get datacenter config from file")
@@ -629,6 +656,8 @@ func TestSetupAndValidateCreateClusterEtcdMachineGroupRefNil(t *testing.T) {
 		machineConfigsLookup: machineConfigs,
 	}
 	clusterSpec.Cluster.Spec.ExternalEtcdConfiguration.MachineGroupRef = nil
+
+	setupMockForDatacenterConfigValidation(cmk, ctx, datacenterConfig)
 
 	err = validator.ValidateClusterMachineConfigs(ctx, cloudStackClusterSpec)
 	thenErrorExpected(t, "must specify machineGroupRef for etcd machines", err)
@@ -642,7 +671,7 @@ func TestSetupAndValidateCreateClusterCPMachineGroupRefNonexistent(t *testing.T)
 		t.Fatalf("unable to get machine configs from file %s", testClusterConfigMainFilename)
 	}
 	clusterSpec := test.NewFullClusterSpec(t, path.Join(testDataDir, testClusterConfigMainFilename))
-	validator := NewValidator(cmk)
+	validator := NewValidator(CmkClientMap{decoder.CloudStackGlobalAZ: cmk})
 	datacenterConfig, err := v1alpha1.GetCloudStackDatacenterConfig(path.Join(testDataDir, testClusterConfigMainFilename))
 	if err != nil {
 		t.Fatalf("unable to get datacenter config from file")
@@ -653,6 +682,8 @@ func TestSetupAndValidateCreateClusterCPMachineGroupRefNonexistent(t *testing.T)
 		machineConfigsLookup: machineConfigs,
 	}
 	clusterSpec.Cluster.Spec.ControlPlaneConfiguration.MachineGroupRef.Name = "nonexistent"
+
+	setupMockForDatacenterConfigValidation(cmk, ctx, datacenterConfig)
 
 	err = validator.ValidateClusterMachineConfigs(ctx, cloudStackClusterSpec)
 	thenErrorExpected(t, "cannot find CloudStackMachineConfig nonexistent for control plane", err)
@@ -666,7 +697,7 @@ func TestSetupAndValidateCreateClusterWorkerMachineGroupRefNonexistent(t *testin
 		t.Fatalf("unable to get machine configs from file %s", testClusterConfigMainFilename)
 	}
 	clusterSpec := test.NewFullClusterSpec(t, path.Join(testDataDir, testClusterConfigMainFilename))
-	validator := NewValidator(cmk)
+	validator := NewValidator(CmkClientMap{decoder.CloudStackGlobalAZ: cmk})
 	datacenterConfig, err := v1alpha1.GetCloudStackDatacenterConfig(path.Join(testDataDir, testClusterConfigMainFilename))
 	if err != nil {
 		t.Fatalf("unable to get datacenter config from file")
@@ -677,6 +708,8 @@ func TestSetupAndValidateCreateClusterWorkerMachineGroupRefNonexistent(t *testin
 		machineConfigsLookup: machineConfigs,
 	}
 	clusterSpec.Cluster.Spec.WorkerNodeGroupConfigurations[0].MachineGroupRef.Name = "nonexistent"
+
+	setupMockForDatacenterConfigValidation(cmk, ctx, datacenterConfig)
 
 	err = validator.ValidateClusterMachineConfigs(ctx, cloudStackClusterSpec)
 	thenErrorExpected(t, "cannot find CloudStackMachineConfig nonexistent for worker nodes", err)
@@ -690,7 +723,7 @@ func TestSetupAndValidateCreateClusterEtcdMachineGroupRefNonexistent(t *testing.
 		t.Fatalf("unable to get machine configs from file %s", testClusterConfigMainFilename)
 	}
 	clusterSpec := test.NewFullClusterSpec(t, path.Join(testDataDir, testClusterConfigMainFilename))
-	validator := NewValidator(cmk)
+	validator := NewValidator(CmkClientMap{decoder.CloudStackGlobalAZ: cmk})
 	datacenterConfig, err := v1alpha1.GetCloudStackDatacenterConfig(path.Join(testDataDir, testClusterConfigMainFilename))
 	if err != nil {
 		t.Fatalf("unable to get datacenter config from file")
@@ -701,6 +734,8 @@ func TestSetupAndValidateCreateClusterEtcdMachineGroupRefNonexistent(t *testing.
 		machineConfigsLookup: machineConfigs,
 	}
 	clusterSpec.Cluster.Spec.ExternalEtcdConfiguration.MachineGroupRef.Name = "nonexistent"
+
+	setupMockForDatacenterConfigValidation(cmk, ctx, datacenterConfig)
 
 	err = validator.ValidateClusterMachineConfigs(ctx, cloudStackClusterSpec)
 	thenErrorExpected(t, "cannot find CloudStackMachineConfig nonexistent for etcd machines", err)
@@ -714,7 +749,7 @@ func TestSetupAndValidateCreateClusterTemplateDifferent(t *testing.T) {
 		t.Fatalf("unable to get machine configs from file %s", testClusterConfigMainFilename)
 	}
 	clusterSpec := test.NewFullClusterSpec(t, path.Join(testDataDir, testClusterConfigMainFilename))
-	validator := NewValidator(cmk)
+	validator := NewValidator(CmkClientMap{decoder.CloudStackGlobalAZ: cmk})
 	datacenterConfig, err := v1alpha1.GetCloudStackDatacenterConfig(path.Join(testDataDir, testClusterConfigMainFilename))
 	if err != nil {
 		t.Fatalf("unable to get datacenter config from file")
@@ -726,6 +761,8 @@ func TestSetupAndValidateCreateClusterTemplateDifferent(t *testing.T) {
 	}
 	controlPlaneMachineConfigName := clusterSpec.Cluster.Spec.ControlPlaneConfiguration.MachineGroupRef.Name
 	cloudStackClusterSpec.machineConfigsLookup[controlPlaneMachineConfigName].Spec.Template = v1alpha1.CloudStackResourceIdentifier{Name: "different"}
+
+	setupMockForDatacenterConfigValidation(cmk, ctx, datacenterConfig)
 
 	err = validator.ValidateClusterMachineConfigs(ctx, cloudStackClusterSpec)
 	thenErrorExpected(t, "control plane and etcd machines must have the same template specified", err)
@@ -748,8 +785,9 @@ func TestValidateMachineConfigsHappyCase(t *testing.T) {
 		datacenterConfig:     datacenterConfig,
 		machineConfigsLookup: machineConfigs,
 	}
-	validator := NewValidator(cmk)
-	cmk.EXPECT().ValidateZonesPresent(gomock.Any(), gomock.Any()).Times(3).Return([]v1alpha1.CloudStackResourceIdentifier{{Name: "zone1", Id: "4e3b338d-87a6-4189-b931-a1747edeea8f"}}, nil)
+	validator := NewValidator(CmkClientMap{decoder.CloudStackGlobalAZ: cmk})
+	setupMockForDatacenterConfigValidation(cmk, ctx, datacenterConfig)
+
 	cmk.EXPECT().ValidateTemplatePresent(ctx, gomock.Any(),
 		gomock.Any(), datacenterConfig.Spec.Account, testTemplate).Times(3)
 	cmk.EXPECT().ValidateServiceOfferingPresent(ctx, gomock.Any(), testOffering).Times(3)
@@ -771,16 +809,9 @@ func TestValidateCloudStackMachineConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unable to get datacenter config from file")
 	}
-	validator := NewValidator(cmk)
+	validator := NewValidator(CmkClientMap{decoder.CloudStackGlobalAZ: cmk})
 
 	for _, machineConfig := range machineConfigs {
-		cmk.EXPECT().ValidateZonesPresent(gomock.Any(), gomock.Any()).Return([]v1alpha1.CloudStackResourceIdentifier{{Name: "zone1", Id: "4e3b338d-87a6-4189-b931-a1747edeea8f"}}, nil)
-		cmk.EXPECT().ValidateTemplatePresent(ctx, gomock.Any(), gomock.Any(), "admin", machineConfig.Spec.Template).Return(nil)
-		cmk.EXPECT().ValidateServiceOfferingPresent(ctx, gomock.Any(), machineConfig.Spec.ComputeOffering).Return(nil)
-		cmk.EXPECT().ValidateDiskOfferingPresent(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		if len(machineConfig.Spec.AffinityGroupIds) > 0 {
-			cmk.EXPECT().ValidateAffinityGroupsPresent(ctx, gomock.Any(), "admin", machineConfig.Spec.AffinityGroupIds).Return(nil)
-		}
 		err := validator.validateMachineConfig(ctx, datacenterConfig, machineConfig)
 		if err != nil {
 			t.Fatalf("failed to validate CloudStackMachineConfig: %v", err)
@@ -814,11 +845,14 @@ func TestValidateMachineConfigsWithAffinity(t *testing.T) {
 		machineConfig.Spec.AffinityGroupIds = []string{}
 	}
 
-	validator := NewValidator(cmk)
-	cmk.EXPECT().ValidateDomainPresent(gomock.Any(), gomock.Any()).AnyTimes()
+	validator := NewValidator(CmkClientMap{decoder.CloudStackGlobalAZ: cmk})
 	cmk.EXPECT().ValidateZonesPresent(gomock.Any(), gomock.Any()).AnyTimes().Return([]v1alpha1.CloudStackResourceIdentifier{{Name: "zone1", Id: "4e3b338d-87a6-4189-b931-a1747edeea8f"}}, nil)
-	cmk.EXPECT().ValidateTemplatePresent(ctx, gomock.Any(),
-		gomock.Any(), datacenterConfig.Spec.Account, testTemplate).AnyTimes()
+	cmk.EXPECT().ValidateDomainPresent(gomock.Any(), gomock.Any()).AnyTimes()
+	cmk.EXPECT().ValidateAccountPresent(ctx, gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
+	cmk.EXPECT().ValidateNetworkPresent(ctx, gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
+	cmk.EXPECT().GetManagementApiEndpoint(ctx).AnyTimes().Return("http://127.16.0.1:8080/client/api")
+
+	cmk.EXPECT().ValidateTemplatePresent(ctx, gomock.Any(), gomock.Any(), datacenterConfig.Spec.Account, testTemplate).AnyTimes()
 	cmk.EXPECT().ValidateServiceOfferingPresent(ctx, gomock.Any(), testOffering).AnyTimes()
 	cmk.EXPECT().ValidateDiskOfferingPresent(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	cmk.EXPECT().ValidateAffinityGroupsPresent(ctx, gomock.Any(), datacenterConfig.Spec.Account, gomock.Any()).AnyTimes()

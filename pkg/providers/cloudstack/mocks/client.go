@@ -41,6 +41,20 @@ func (m *MockProviderCmkClient) EXPECT() *MockProviderCmkClientMockRecorder {
 	return m.recorder
 }
 
+// GetManagementApiEndpoint mocks base method.
+func (m *MockProviderCmkClient) GetManagementApiEndpoint(arg0 context.Context) string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetManagementApiEndpoint", arg0)
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// GetManagementApiEndpoint indicates an expected call of GetManagementApiEndpoint.
+func (mr *MockProviderCmkClientMockRecorder) GetManagementApiEndpoint(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetManagementApiEndpoint", reflect.TypeOf((*MockProviderCmkClient)(nil).GetManagementApiEndpoint), arg0)
+}
+
 // ValidateAccountPresent mocks base method.
 func (m *MockProviderCmkClient) ValidateAccountPresent(arg0 context.Context, arg1, arg2 string) error {
 	m.ctrl.T.Helper()

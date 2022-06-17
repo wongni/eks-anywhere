@@ -13,6 +13,7 @@ const (
 	EksacloudStackCloudConfigB64SecretKey = "EKSA_CLOUDSTACK_B64ENCODED_SECRET"
 	CloudStackCloudConfigB64SecretKey     = "CLOUDSTACK_B64ENCODED_SECRET"
 	EksaCloudStackHostPathToMount         = "EKSA_CLOUDSTACK_HOST_PATHS_TO_MOUNT"
+	CloudStackGlobalAZ                    = "Global"
 )
 
 // ParseCloudStackSecret parses the input b64 string into the ini object to extract out the api key, secret key, and url
@@ -37,7 +38,7 @@ func ParseCloudStackSecret() (*CloudStackExecConfig, error) {
 		if section.Name() == "DEFAULT" {
 			continue
 		}
-		if section.Name() == "Global" {
+		if section.Name() == CloudStackGlobalAZ {
 			foundGlobalSection = true
 		}
 

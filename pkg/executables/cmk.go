@@ -380,6 +380,10 @@ func NewCmk(executable Executable, writer filewriter.FileWriter, config decoder.
 	}
 }
 
+func (c *Cmk) GetManagementApiEndpoint(ctx context.Context) string {
+	return c.config.ManagementUrl
+}
+
 // ValidateCloudStackConnection Calls `cmk sync` to ensure that the endpoint and credentials + domain are valid
 func (c *Cmk) ValidateCloudStackConnection(ctx context.Context) error {
 	command := newCmkCommand("sync")

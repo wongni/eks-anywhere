@@ -42,7 +42,7 @@ func TestCloudStackConfigDecoder(t *testing.T) {
 			wantConfig: &decoder.CloudStackExecConfig{
 				Profiles: []decoder.CloudStackProfileConfig{
 					{
-						Name:          "Global",
+						Name:          decoder.CloudStackGlobalAZ,
 						ApiKey:        "test-key1",
 						SecretKey:     "test-secret1",
 						ManagementUrl: "http://127.16.0.1:8080/client/api",
@@ -59,7 +59,7 @@ func TestCloudStackConfigDecoder(t *testing.T) {
 			wantConfig: &decoder.CloudStackExecConfig{
 				Profiles: []decoder.CloudStackProfileConfig{
 					{
-						Name:          "Global",
+						Name:          decoder.CloudStackGlobalAZ,
 						ApiKey:        "test-key1",
 						SecretKey:     "test-secret1",
 						ManagementUrl: "http://127.16.0.1:8080/client/api",
@@ -98,7 +98,7 @@ func TestCloudStackConfigDecoder(t *testing.T) {
 			wantConfig: &decoder.CloudStackExecConfig{
 				Profiles: []decoder.CloudStackProfileConfig{
 					{
-						Name:          "Global",
+						Name:          decoder.CloudStackGlobalAZ,
 						ApiKey:        "test-key1",
 						SecretKey:     "test-secret1",
 						ManagementUrl: "http://127.16.0.1:8080/client/api",
