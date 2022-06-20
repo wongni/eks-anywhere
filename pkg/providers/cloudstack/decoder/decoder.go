@@ -31,15 +31,11 @@ func ParseCloudStackSecret() (*CloudStackExecConfig, error) {
 		return nil, fmt.Errorf("failed to extract values from %s with ini: %v", EksacloudStackCloudConfigB64SecretKey, err)
 	}
 
-	foundGlobalSection := false
 	cloudstackProfiles := []CloudStackProfileConfig{}
 	sections := cfg.Sections()
 	for _, section := range sections {
 		if section.Name() == "DEFAULT" {
 			continue
-		}
-		if section.Name() == CloudStackGlobalAZ {
-			foundGlobalSection = true
 		}
 
 		apiKey, err := section.GetKey("api-key")
@@ -72,10 +68,6 @@ func ParseCloudStackSecret() (*CloudStackExecConfig, error) {
 
 	if len(cloudstackProfiles) == 0 {
 		return nil, fmt.Errorf("no instance found from %s", EksacloudStackCloudConfigB64SecretKey)
-	}
-
-	if !foundGlobalSection {
-		return nil, fmt.Errorf("[Global] section not found from %s", EksacloudStackCloudConfigB64SecretKey)
 	}
 
 	return &CloudStackExecConfig{

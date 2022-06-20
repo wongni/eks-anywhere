@@ -110,10 +110,10 @@ func TestValidateDatacenterConfigsNoNetwork(t *testing.T) {
 		machineConfigsLookup: nil,
 	}
 	validator := NewValidator(CmkClientMap{decoder.CloudStackGlobalAZ: cmk})
-	setupMockForDatacenterConfigValidation(cmk, ctx, datacenterConfig)
-
 	datacenterConfig.Spec.Zones[0].Network.Id = ""
 	datacenterConfig.Spec.Zones[0].Network.Name = ""
+	setupMockForDatacenterConfigValidation(cmk, ctx, datacenterConfig)
+
 	err = validator.ValidateCloudStackDatacenterConfig(ctx, cloudStackClusterSpec.datacenterConfig)
 
 	thenErrorExpected(t, "zone network is not set or is empty", err)
@@ -196,6 +196,7 @@ func TestSetupAndValidateDiskOfferingEmpty(t *testing.T) {
 	cmk.EXPECT().ValidateDiskOfferingPresent(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 	cmk.EXPECT().ValidateAffinityGroupsPresent(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(3)
 
+	_ = validator.ValidateCloudStackDatacenterConfig(ctx, datacenterConfig)
 	err = validator.ValidateClusterMachineConfigs(ctx, cloudStackClusterSpec)
 	if err != nil {
 		t.Fatalf("validator.ValidateClusterMachineConfigs() err = %v, want err = nil", err)
@@ -242,6 +243,7 @@ func TestSetupAndValidateValidDiskOffering(t *testing.T) {
 	cmk.EXPECT().ValidateDiskOfferingPresent(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
 	cmk.EXPECT().ValidateAffinityGroupsPresent(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(3)
 
+	_ = validator.ValidateCloudStackDatacenterConfig(ctx, datacenterConfig)
 	err = validator.ValidateClusterMachineConfigs(ctx, cloudStackClusterSpec)
 	if err != nil {
 		t.Fatalf("validator.ValidateClusterMachineConfigs() err = %v, want err = nil", err)
@@ -288,6 +290,7 @@ func TestSetupAndValidateInvalidDiskOfferingNotPresent(t *testing.T) {
 	cmk.EXPECT().ValidateDiskOfferingPresent(gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(errors.New("match me"))
 	cmk.EXPECT().ValidateAffinityGroupsPresent(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 
+	_ = validator.ValidateCloudStackDatacenterConfig(ctx, datacenterConfig)
 	err = validator.ValidateClusterMachineConfigs(ctx, cloudStackClusterSpec)
 	wantErrMsg := "validating disk offering: match me"
 	assert.Contains(t, err.Error(), wantErrMsg, "expected error containing %q, got %v", wantErrMsg, err)
@@ -501,6 +504,7 @@ func TestSetupAndValidateUsersNil(t *testing.T) {
 	cmk.EXPECT().ValidateDiskOfferingPresent(gomock.Any(), gomock.Any(), gomock.Any()).Times(3)
 	cmk.EXPECT().ValidateAffinityGroupsPresent(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(3)
 
+	_ = validator.ValidateCloudStackDatacenterConfig(ctx, datacenterConfig)
 	err = validator.ValidateClusterMachineConfigs(ctx, cloudStackClusterSpec)
 	if err != nil {
 		t.Fatalf("validator.ValidateClusterMachineConfigs() err = %v, want err = nil", err)
@@ -571,6 +575,8 @@ func TestSetupAndValidateSshAuthorizedKeysNil(t *testing.T) {
 	cmk.EXPECT().ValidateServiceOfferingPresent(gomock.Any(), gomock.Any(), gomock.Any()).Times(3)
 	cmk.EXPECT().ValidateDiskOfferingPresent(gomock.Any(), gomock.Any(), gomock.Any()).Times(3)
 	cmk.EXPECT().ValidateAffinityGroupsPresent(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(3)
+
+	_ = validator.ValidateCloudStackDatacenterConfig(ctx, datacenterConfig)
 	err = validator.ValidateClusterMachineConfigs(ctx, cloudStackClusterSpec)
 	if err != nil {
 		t.Fatalf("validator.ValidateClusterMachineConfigs() err = %v, want err = nil", err)
@@ -578,7 +584,7 @@ func TestSetupAndValidateSshAuthorizedKeysNil(t *testing.T) {
 }
 
 func setupMockForDatacenterConfigValidation(cmk *mocks.MockProviderCmkClient, ctx context.Context, datacenterConfig *v1alpha1.CloudStackDatacenterConfig) {
-	cmk.EXPECT().ValidateZonesPresent(ctx, datacenterConfig.Spec.Zones).AnyTimes().Return([]v1alpha1.CloudStackResourceIdentifier{{Name: "zone1", Id: "4e3b338d-87a6-4189-b931-a1747edeea8f"}}, nil)
+	cmk.EXPECT().ValidateZonePresent(ctx, datacenterConfig.Spec.Zones[0]).AnyTimes().Return("4e3b338d-87a6-4189-b931-a1747edeea8f", nil)
 	cmk.EXPECT().ValidateDomainPresent(ctx, datacenterConfig.Spec.Domain).AnyTimes().Return(v1alpha1.CloudStackResourceIdentifier{Id: "5300cdac-74d5-11ec-8696-c81f66d3e965", Name: datacenterConfig.Spec.Domain}, nil)
 	cmk.EXPECT().ValidateAccountPresent(ctx, gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
 	cmk.EXPECT().ValidateNetworkPresent(ctx, gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
@@ -793,6 +799,8 @@ func TestValidateMachineConfigsHappyCase(t *testing.T) {
 	cmk.EXPECT().ValidateServiceOfferingPresent(ctx, gomock.Any(), testOffering).Times(3)
 	cmk.EXPECT().ValidateDiskOfferingPresent(gomock.Any(), gomock.Any(), gomock.Any()).Times(3)
 	cmk.EXPECT().ValidateAffinityGroupsPresent(ctx, gomock.Any(), datacenterConfig.Spec.Account, gomock.Any()).Times(3)
+
+	_ = validator.ValidateCloudStackDatacenterConfig(ctx, datacenterConfig)
 	err = validator.ValidateClusterMachineConfigs(ctx, cloudStackClusterSpec)
 	assert.Nil(t, err)
 	assert.Equal(t, "1.2.3.4:6443", clusterSpec.Cluster.Spec.ControlPlaneConfiguration.Endpoint.Host)
@@ -846,7 +854,7 @@ func TestValidateMachineConfigsWithAffinity(t *testing.T) {
 	}
 
 	validator := NewValidator(CmkClientMap{decoder.CloudStackGlobalAZ: cmk})
-	cmk.EXPECT().ValidateZonesPresent(gomock.Any(), gomock.Any()).AnyTimes().Return([]v1alpha1.CloudStackResourceIdentifier{{Name: "zone1", Id: "4e3b338d-87a6-4189-b931-a1747edeea8f"}}, nil)
+	cmk.EXPECT().ValidateZonePresent(gomock.Any(), gomock.Any()).AnyTimes().Return("4e3b338d-87a6-4189-b931-a1747edeea8f", nil)
 	cmk.EXPECT().ValidateDomainPresent(gomock.Any(), gomock.Any()).AnyTimes()
 	cmk.EXPECT().ValidateAccountPresent(ctx, gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
 	cmk.EXPECT().ValidateNetworkPresent(ctx, gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(nil)

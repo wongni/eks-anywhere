@@ -447,7 +447,7 @@ func TestCmkListOperations(t *testing.T) {
 				"list", "zones", fmt.Sprintf("name=\"%s\"", resourceName.Name),
 			},
 			cmkFunc: func(cmk executables.Cmk, ctx context.Context) error {
-				_, err := cmk.ValidateZonesPresent(ctx, []v1alpha1.CloudStackZone{zones[0]})
+				_, err := cmk.ValidateZonePresent(ctx, zones[0])
 				return err
 			},
 			cmkResponseError:      nil,
@@ -463,7 +463,7 @@ func TestCmkListOperations(t *testing.T) {
 				"list", "zones", fmt.Sprintf("id=\"%s\"", resourceId.Id),
 			},
 			cmkFunc: func(cmk executables.Cmk, ctx context.Context) error {
-				_, err := cmk.ValidateZonesPresent(ctx, []v1alpha1.CloudStackZone{zones[2]})
+				_, err := cmk.ValidateZonePresent(ctx, zones[2])
 				return err
 			},
 			cmkResponseError:      nil,
@@ -479,7 +479,7 @@ func TestCmkListOperations(t *testing.T) {
 				"list", "zones", fmt.Sprintf("name=\"%s\"", resourceName.Name),
 			},
 			cmkFunc: func(cmk executables.Cmk, ctx context.Context) error {
-				_, err := cmk.ValidateZonesPresent(ctx, zones)
+				_, err := cmk.ValidateZonePresent(ctx, zones[0])
 				return err
 			},
 			cmkResponseError:      nil,
@@ -495,7 +495,7 @@ func TestCmkListOperations(t *testing.T) {
 				"list", "zones", fmt.Sprintf("name=\"%s\"", resourceName.Name),
 			},
 			cmkFunc: func(cmk executables.Cmk, ctx context.Context) error {
-				_, err := cmk.ValidateZonesPresent(ctx, zones)
+				_, err := cmk.ValidateZonePresent(ctx, zones[0])
 				return err
 			},
 			cmkResponseError:      nil,
@@ -511,7 +511,7 @@ func TestCmkListOperations(t *testing.T) {
 				"list", "networks", fmt.Sprintf("domainid=\"%s\"", domainId), fmt.Sprintf("account=\"%s\"", accountName), fmt.Sprintf("zoneid=\"%s\"", "TEST_RESOURCE"),
 			},
 			cmkFunc: func(cmk executables.Cmk, ctx context.Context) error {
-				return cmk.ValidateNetworkPresent(ctx, domainId, zones[2], []v1alpha1.CloudStackResourceIdentifier{}, accountName, false)
+				return cmk.ValidateNetworkPresent(ctx, domainId, zones[2].Network, zones[2].Id, accountName, false)
 			},
 			cmkResponseError:      nil,
 			wantErr:               false,
@@ -526,7 +526,7 @@ func TestCmkListOperations(t *testing.T) {
 				"list", "networks", fmt.Sprintf("id=\"%s\"", resourceId.Id), fmt.Sprintf("domainid=\"%s\"", domainId), fmt.Sprintf("account=\"%s\"", accountName), fmt.Sprintf("zoneid=\"%s\"", "TEST_RESOURCE"),
 			},
 			cmkFunc: func(cmk executables.Cmk, ctx context.Context) error {
-				return cmk.ValidateNetworkPresent(ctx, domainId, zones[3], []v1alpha1.CloudStackResourceIdentifier{}, accountName, false)
+				return cmk.ValidateNetworkPresent(ctx, domainId, zones[3].Network, zones[3].Id, accountName, false)
 			},
 			cmkResponseError:      nil,
 			wantErr:               false,
@@ -541,7 +541,7 @@ func TestCmkListOperations(t *testing.T) {
 				"list", "networks", fmt.Sprintf("domainid=\"%s\"", domainId), fmt.Sprintf("account=\"%s\"", accountName), fmt.Sprintf("zoneid=\"%s\"", "TEST_RESOURCE"),
 			},
 			cmkFunc: func(cmk executables.Cmk, ctx context.Context) error {
-				return cmk.ValidateNetworkPresent(ctx, domainId, zones[2], []v1alpha1.CloudStackResourceIdentifier{}, accountName, false)
+				return cmk.ValidateNetworkPresent(ctx, domainId, zones[2].Network, zones[2].Id, accountName, false)
 			},
 			cmkResponseError:      nil,
 			wantErr:               true,
@@ -556,7 +556,7 @@ func TestCmkListOperations(t *testing.T) {
 				"list", "networks", fmt.Sprintf("domainid=\"%s\"", domainId), fmt.Sprintf("account=\"%s\"", accountName), fmt.Sprintf("zoneid=\"%s\"", "TEST_RESOURCE"),
 			},
 			cmkFunc: func(cmk executables.Cmk, ctx context.Context) error {
-				return cmk.ValidateNetworkPresent(ctx, domainId, zones[2], []v1alpha1.CloudStackResourceIdentifier{}, accountName, false)
+				return cmk.ValidateNetworkPresent(ctx, domainId, zones[2].Network, zones[2].Id, accountName, false)
 			},
 			cmkResponseError:      nil,
 			wantErr:               true,

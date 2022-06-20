@@ -109,11 +109,6 @@ func TestCloudStackConfigDecoder(t *testing.T) {
 			},
 		},
 		{
-			name:       "Missing global section",
-			configFile: "../testdata/cloudstack_config_missing_global_section.ini",
-			wantErr:    true,
-		},
-		{
 			name:       "Invalid INI format",
 			configFile: "../testdata/cloudstack_config_invalid_format.ini",
 			wantErr:    true,
