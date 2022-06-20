@@ -17,8 +17,9 @@ import (
 )
 
 const (
-	testClusterConfigMainFilename = "cluster_main.yaml"
-	testDataDir                   = "testdata"
+	testClusterConfigMainFilename        = "cluster_main.yaml"
+	testClusterConfigMainWithAZsFilename = "cluster_main_with_availability_zones.yaml"
+	testDataDir                          = "testdata"
 )
 
 var testTemplate = v1alpha1.CloudStackResourceIdentifier{
@@ -51,6 +52,27 @@ func TestValidateCloudStackDatacenterConfig(t *testing.T) {
 	}
 
 	setupMockForDatacenterConfigValidation(cmk, ctx, datacenterConfig)
+
+	err = validator.ValidateCloudStackDatacenterConfig(ctx, datacenterConfig)
+	if err != nil {
+		t.Fatalf("failed to validate CloudStackDataCenterConfig: %v", err)
+	}
+}
+
+func TestValidateCloudStackDatacenterConfigWithAZ(t *testing.T) {
+	ctx := context.Background()
+	setupContext()
+	cmk := mocks.NewMockProviderCmkClient(gomock.NewController(t))
+	cmk2 := mocks.NewMockProviderCmkClient(gomock.NewController(t))
+	validator := NewValidator(CmkClientMap{decoder.CloudStackGlobalAZ: cmk, "zone2": cmk2})
+
+	datacenterConfig, err := v1alpha1.GetCloudStackDatacenterConfig(path.Join(testDataDir, testClusterConfigMainWithAZsFilename))
+	if err != nil {
+		t.Fatalf("unable to get datacenter config from file")
+	}
+
+	setupMockForDatacenterConfigValidation(cmk, ctx, datacenterConfig)
+	setupMockForAvailabilityZonesValidation(cmk2, ctx, datacenterConfig.Spec.AvailabilityZones)
 
 	err = validator.ValidateCloudStackDatacenterConfig(ctx, datacenterConfig)
 	if err != nil {
@@ -588,7 +610,17 @@ func setupMockForDatacenterConfigValidation(cmk *mocks.MockProviderCmkClient, ct
 	cmk.EXPECT().ValidateDomainPresent(ctx, datacenterConfig.Spec.Domain).AnyTimes().Return(v1alpha1.CloudStackResourceIdentifier{Id: "5300cdac-74d5-11ec-8696-c81f66d3e965", Name: datacenterConfig.Spec.Domain}, nil)
 	cmk.EXPECT().ValidateAccountPresent(ctx, gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
 	cmk.EXPECT().ValidateNetworkPresent(ctx, gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
-	cmk.EXPECT().GetManagementApiEndpoint(ctx).AnyTimes().Return("http://127.16.0.1:8080/client/api")
+	cmk.EXPECT().GetManagementApiEndpoint(ctx).AnyTimes().Return(datacenterConfig.Spec.ManagementApiEndpoint)
+}
+
+func setupMockForAvailabilityZonesValidation(cmk *mocks.MockProviderCmkClient, ctx context.Context, azs []v1alpha1.CloudStackAvailabilityZone) {
+	for _, az := range azs {
+		cmk.EXPECT().ValidateZonePresent(ctx, az.Zone).AnyTimes().Return("4e3b338d-87a6-4189-b931-a1747edeea82", nil)
+		cmk.EXPECT().ValidateDomainPresent(ctx, az.Domain).AnyTimes().Return(v1alpha1.CloudStackResourceIdentifier{Id: "5300cdac-74d5-11ec-8696-c81f66d3e962", Name: az.Domain}, nil)
+		cmk.EXPECT().ValidateAccountPresent(ctx, az.Account, gomock.Any()).AnyTimes().Return(nil)
+		cmk.EXPECT().ValidateNetworkPresent(ctx, gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
+		cmk.EXPECT().GetManagementApiEndpoint(ctx).AnyTimes().Return(az.ManagementApiEndpoint)
+	}
 }
 
 func TestSetupAndValidateCreateClusterCPMachineGroupRefNil(t *testing.T) {
