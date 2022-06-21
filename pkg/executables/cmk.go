@@ -323,6 +323,11 @@ func (c *Cmk) ValidateNetworkPresent(ctx context.Context, domainId string, netwo
 }
 
 func (c *Cmk) ValidateAccountPresent(ctx context.Context, account string, domainId string) error {
+	// If account is not specified then no need to check its presence
+	if len(account) == 0 {
+		return nil
+	}
+
 	command := newCmkCommand("list accounts")
 	applyCmkArgs(&command, withCloudStackName(account), withCloudStackDomainId(domainId))
 	result, err := c.exec(ctx, command...)

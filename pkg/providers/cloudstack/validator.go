@@ -2,6 +2,7 @@ package cloudstack
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strconv"
@@ -120,7 +121,7 @@ func (v *Validator) ValidateCloudStackDatacenterConfig(ctx context.Context, data
 
 func (v *Validator) generateLocalAvailabilityZones(ctx context.Context, datacenterConfig *anywherev1.CloudStackDatacenterConfig) error {
 	if datacenterConfig == nil {
-		return nil
+		return errors.New("CloudStack Datacenter Config is null")
 	}
 
 	if len(datacenterConfig.Spec.Domain) > 0 {
