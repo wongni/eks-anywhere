@@ -64,7 +64,7 @@ func CleanUpVsphereTestResources(ctx context.Context, clusterName string) error 
 	if err != nil {
 		return fmt.Errorf("validating cluster name: %v", err)
 	}
-	err = vsphereRmVms(ctx, clusterName)
+	err = VsphereRmVms(ctx, clusterName)
 	if err != nil {
 		return fmt.Errorf("removing vcenter vms: %v", err)
 	}
@@ -72,7 +72,7 @@ func CleanUpVsphereTestResources(ctx context.Context, clusterName string) error 
 	return nil
 }
 
-func vsphereRmVms(ctx context.Context, clusterName string) error {
+func VsphereRmVms(ctx context.Context, clusterName string, opts ...executables.GovcOpt) error {
 	logger.V(1).Info("Deleting vsphere vcenter vms")
 	executableBuilder, close, err := executables.NewExecutableBuilder(ctx, executables.DefaultEksaImage())
 	if err != nil {
@@ -80,7 +80,7 @@ func vsphereRmVms(ctx context.Context, clusterName string) error {
 	}
 	defer close.CheckErr(ctx)
 	tmpWriter, _ := filewriter.NewWriter("rmvms")
-	govc := executableBuilder.BuildGovcExecutable(tmpWriter)
+	govc := executableBuilder.BuildGovcExecutable(tmpWriter, opts...)
 	defer govc.Close(ctx)
 
 	return govc.CleanupVms(ctx, clusterName, false)
