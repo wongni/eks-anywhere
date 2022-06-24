@@ -168,7 +168,7 @@ func (v *CloudStackDatacenterConfig) SetDefaults() {
 				Account:               v.Spec.Account,
 				Domain:                v.Spec.Domain,
 				ManagementApiEndpoint: v.Spec.ManagementApiEndpoint,
-				CredentialsRef:        "Global",
+				CredentialsRef:        "global",
 			}
 			v.Spec.AvailabilityZones = append(v.Spec.AvailabilityZones, az)
 		}
