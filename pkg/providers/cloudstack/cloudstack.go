@@ -77,12 +77,12 @@ func (p *cloudstackProvider) PreBootstrapSetup(ctx context.Context, cluster *typ
 }
 
 func (p *cloudstackProvider) PreCAPIInstallOnBootstrap(ctx context.Context, cluster *types.Cluster, clusterSpec *cluster.Spec) error {
-	logger.Info("Installing secrets on bootstrap cluster")
-	return p.UpdateSecrets(ctx, cluster)
+	return nil
 }
 
 func (p *cloudstackProvider) PostBootstrapSetup(ctx context.Context, clusterConfig *v1alpha1.Cluster, cluster *types.Cluster) error {
-	return nil
+	logger.Info("Installing secrets on bootstrap cluster")
+	return p.UpdateSecrets(ctx, cluster)
 }
 
 func (p *cloudstackProvider) PostBootstrapSetupUpgrade(ctx context.Context, clusterConfig *v1alpha1.Cluster, cluster *types.Cluster) error {
@@ -94,35 +94,30 @@ func (p *cloudstackProvider) PostWorkloadInit(ctx context.Context, cluster *type
 }
 
 func (p *cloudstackProvider) UpdateSecrets(ctx context.Context, cluster *types.Cluster) error {
-	var contents bytes.Buffer
-	err := p.createSecrets(ctx, cluster, &contents)
+	contents, err := p.createSecrets(ctx, cluster)
 	if err != nil {
 		return err
 	}
 
 	err = p.providerKubectlClient.ApplyKubeSpecFromBytes(ctx, cluster, contents.Bytes())
 	if err != nil {
-		return fmt.Errorf("loading secrets object: %v", err)
+		return fmt.Errorf("applying secrets object: %v", err)
 	}
 	return nil
 }
 
-func (p *cloudstackProvider) createSecrets(ctx context.Context, cluster *types.Cluster, contents *bytes.Buffer) error {
-	if err := p.providerKubectlClient.GetNamespace(ctx, cluster.KubeconfigFile, constants.EksaSystemNamespace); err != nil {
-		if err := p.providerKubectlClient.CreateNamespace(ctx, cluster.KubeconfigFile, constants.EksaSystemNamespace); err != nil {
-			return err
-		}
-	}
+func (p *cloudstackProvider) createSecrets(ctx context.Context, cluster *types.Cluster) (bytes.Buffer, error) {
+	var contents bytes.Buffer
 	t, err := template.New("tmpl").Parse(defaultSecretsTemplate)
 	if err != nil {
-		return fmt.Errorf("creating secrets template: %v", err)
+		return contents, fmt.Errorf("creating secrets template: %v", err)
 	}
 
-	err = t.Execute(contents, p.execConfig)
+	err = t.Execute(&contents, p.execConfig)
 	if err != nil {
-		return fmt.Errorf("substituting values for secrets template: %v", err)
+		return contents, fmt.Errorf("substituting values for secrets template: %v", err)
 	}
-	return nil
+	return contents, nil
 }
 
 func machineRefSliceToMap(machineRefs []v1alpha1.Ref) map[string]v1alpha1.Ref {
