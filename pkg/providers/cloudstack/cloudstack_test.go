@@ -1566,7 +1566,6 @@ func TestProviderUpdateSecrets(t *testing.T) {
 			t.Fatalf("Failed to read embed eksd release: %s", err)
 		}
 
-		kubectl.EXPECT().GetNamespace(ctx, gomock.Any(), constants.EksaSystemNamespace).Return(nil)
 		kubectl.EXPECT().ApplyKubeSpecFromBytes(ctx, gomock.Any(), expectedSecretsYaml)
 
 		if err := provider.SetupAndValidateCreateCluster(ctx, clusterSpec); err != nil {
