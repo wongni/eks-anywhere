@@ -88,6 +88,10 @@ func (p *provider) PostBootstrapSetupUpgrade(ctx context.Context, clusterConfig 
 	return nil
 }
 
+func (p *provider) PostBootstrapMoveUpgrade(ctx context.Context, clusterConfig *v1alpha1.Cluster, cluster *types.Cluster) error {
+	return nil
+}
+
 func (p *provider) PostWorkloadInit(ctx context.Context, cluster *types.Cluster, clusterSpec *cluster.Spec) error {
 	return nil
 }

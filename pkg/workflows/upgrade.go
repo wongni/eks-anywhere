@@ -401,6 +401,11 @@ func (s *moveManagementToBootstrapTask) Run(ctx context.Context, commandContext 
 		commandContext.SetError(err)
 		return &CollectDiagnosticsTask{}
 	}
+	logger.Info("Provider specific post-move")
+	if err = commandContext.Provider.PostBootstrapMoveUpgrade(ctx, commandContext.ClusterSpec.Cluster, commandContext.BootstrapCluster); err != nil {
+		commandContext.SetError(err)
+		return &CollectDiagnosticsTask{}
+	}
 	commandContext.ManagementCluster = commandContext.BootstrapCluster
 	return &upgradeWorkloadClusterTask{}
 }

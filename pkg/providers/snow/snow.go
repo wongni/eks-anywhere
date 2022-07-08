@@ -155,6 +155,10 @@ func (p *SnowProvider) PostBootstrapSetupUpgrade(ctx context.Context, clusterCon
 	return nil
 }
 
+func (p *SnowProvider) PostBootstrapMoveUpgrade(ctx context.Context, clusterConfig *v1alpha1.Cluster, cluster *types.Cluster) error {
+	return nil
+}
+
 func (p *SnowProvider) PostWorkloadInit(ctx context.Context, cluster *types.Cluster, clusterSpec *cluster.Spec) error {
 	return nil
 }

@@ -1122,6 +1122,10 @@ func (p *vsphereProvider) PostBootstrapSetupUpgrade(ctx context.Context, cluster
 	return nil
 }
 
+func (p *vsphereProvider) PostBootstrapMoveUpgrade(ctx context.Context, clusterConfig *v1alpha1.Cluster, cluster *types.Cluster) error {
+	return nil
+}
+
 func (p *vsphereProvider) PostWorkloadInit(ctx context.Context, cluster *types.Cluster, clusterSpec *cluster.Spec) error {
 	return nil
 }

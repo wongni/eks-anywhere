@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 
 	etcdv1beta1 "github.com/mrajashree/etcdadm-controller/api/v1beta1"
 	corev1 "k8s.io/api/core/v1"
@@ -77,16 +78,21 @@ func (p *cloudstackProvider) PreBootstrapSetup(ctx context.Context, cluster *typ
 }
 
 func (p *cloudstackProvider) PreCAPIInstallOnBootstrap(ctx context.Context, cluster *types.Cluster, clusterSpec *cluster.Spec) error {
+	return nil
+}
+
+func (p *cloudstackProvider) PostBootstrapSetup(ctx context.Context, clusterConfig *v1alpha1.Cluster, cluster *types.Cluster) error {
 	logger.Info("Installing secrets on bootstrap cluster")
 	return p.UpdateSecrets(ctx, cluster)
 }
 
-func (p *cloudstackProvider) PostBootstrapSetup(ctx context.Context, clusterConfig *v1alpha1.Cluster, cluster *types.Cluster) error {
+func (p *cloudstackProvider) PostBootstrapSetupUpgrade(ctx context.Context, clusterConfig *v1alpha1.Cluster, cluster *types.Cluster) error {
 	return nil
 }
 
-func (p *cloudstackProvider) PostBootstrapSetupUpgrade(ctx context.Context, clusterConfig *v1alpha1.Cluster, cluster *types.Cluster) error {
-	return nil
+func (p *cloudstackProvider) PostBootstrapMoveUpgrade(ctx context.Context, clusterConfig *v1alpha1.Cluster, cluster *types.Cluster) error {
+	logger.Info("Installing secrets on bootstrap cluster after move")
+	return p.UpdateSecrets(ctx, cluster)
 }
 
 func (p *cloudstackProvider) PostWorkloadInit(ctx context.Context, cluster *types.Cluster, clusterSpec *cluster.Spec) error {
@@ -94,8 +100,11 @@ func (p *cloudstackProvider) PostWorkloadInit(ctx context.Context, cluster *type
 }
 
 func (p *cloudstackProvider) UpdateSecrets(ctx context.Context, cluster *types.Cluster) error {
-	var contents bytes.Buffer
-	err := p.createSecrets(ctx, cluster, &contents)
+	if err := p.validateSecretsUnchanged(ctx, cluster); err != nil {
+		return fmt.Errorf("validating secrets are unchanged: %v", err)
+	}
+
+	contents, err := p.createSecrets(ctx, cluster)
 	if err != nil {
 		return err
 	}
@@ -107,22 +116,66 @@ func (p *cloudstackProvider) UpdateSecrets(ctx context.Context, cluster *types.C
 	return nil
 }
 
-func (p *cloudstackProvider) createSecrets(ctx context.Context, cluster *types.Cluster, contents *bytes.Buffer) error {
+func (p *cloudstackProvider) validateSecretsUnchanged(ctx context.Context, cluster *types.Cluster) error {
+	for _, profile := range p.execConfig.Profiles {
+		secret, err := p.providerKubectlClient.GetSecret(ctx, profile.Name, executables.WithCluster(cluster), executables.WithNamespace(constants.EksaSystemNamespace))
+		if err != nil {
+			if strings.Contains(err.Error(), "not found") {
+				logger.Info("secret " + profile.Name + " not found: " + err.Error())
+				continue
+			} else {
+				return err
+			}
+		}
+		if err := validateSecretDataUnchanged(secret, "uri", profile.ManagementUrl); err != nil {
+			return err
+		}
+		if err := validateSecretDataUnchanged(secret, "apikey", profile.ApiKey); err != nil {
+			return err
+		}
+		if err := validateSecretDataUnchanged(secret, "secretkey", profile.SecretKey); err != nil {
+			return err
+		}
+		if err := validateSecretDataUnchanged(secret, "verifyssl", profile.VerifySsl); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateSecretDataUnchanged(secret *corev1.Secret, dataKey string, inputData string) error {
+	data, ok := secret.Data[dataKey]
+	if !ok {
+		return fmt.Errorf("data %s not found in secret %s", dataKey, secret.Name)
+	}
+	// data, err := b64.StdEncoding.DecodeString(string(encodedValue))
+	// if err != nil {
+	// 	return err
+	// }
+	logger.Info(fmt.Sprintf("existing secret (%s) data %s (%s) vs. input (%s)", secret.Name, dataKey, string(data), inputData))
+	if string(data) != inputData {
+		return fmt.Errorf("existing secret (%s) data %s (%s) is different from input (%s)", secret.Name, dataKey, string(data), inputData)
+	}
+	return nil
+}
+
+func (p *cloudstackProvider) createSecrets(ctx context.Context, cluster *types.Cluster) (bytes.Buffer, error) {
+	var contents bytes.Buffer
 	if err := p.providerKubectlClient.GetNamespace(ctx, cluster.KubeconfigFile, constants.EksaSystemNamespace); err != nil {
 		if err := p.providerKubectlClient.CreateNamespace(ctx, cluster.KubeconfigFile, constants.EksaSystemNamespace); err != nil {
-			return err
+			return contents, err
 		}
 	}
 	t, err := template.New("tmpl").Parse(defaultSecretsTemplate)
 	if err != nil {
-		return fmt.Errorf("creating secrets template: %v", err)
+		return contents, fmt.Errorf("creating secrets template: %v", err)
 	}
 
-	err = t.Execute(contents, p.execConfig)
+	err = t.Execute(&contents, p.execConfig)
 	if err != nil {
-		return fmt.Errorf("substituting values for secrets template: %v", err)
+		return contents, fmt.Errorf("substituting values for secrets template: %v", err)
 	}
-	return nil
+	return contents, nil
 }
 
 func machineRefSliceToMap(machineRefs []v1alpha1.Ref) map[string]v1alpha1.Ref {

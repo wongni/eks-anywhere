@@ -284,6 +284,20 @@ func (mr *MockProviderMockRecorder) Name() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Name", reflect.TypeOf((*MockProvider)(nil).Name))
 }
 
+// PostBootstrapMoveUpgrade mocks base method.
+func (m *MockProvider) PostBootstrapMoveUpgrade(arg0 context.Context, arg1 *v1alpha1.Cluster, arg2 *types.Cluster) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PostBootstrapMoveUpgrade", arg0, arg1, arg2)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// PostBootstrapMoveUpgrade indicates an expected call of PostBootstrapMoveUpgrade.
+func (mr *MockProviderMockRecorder) PostBootstrapMoveUpgrade(arg0, arg1, arg2 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PostBootstrapMoveUpgrade", reflect.TypeOf((*MockProvider)(nil).PostBootstrapMoveUpgrade), arg0, arg1, arg2)
+}
+
 // PostBootstrapSetup mocks base method.
 func (m *MockProvider) PostBootstrapSetup(arg0 context.Context, arg1 *v1alpha1.Cluster, arg2 *types.Cluster) error {
 	m.ctrl.T.Helper()

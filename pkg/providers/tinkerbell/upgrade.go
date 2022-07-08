@@ -144,6 +144,10 @@ func (p *Provider) PostBootstrapSetupUpgrade(ctx context.Context, clusterConfig 
 	return nil
 }
 
+func (p *Provider) PostBootstrapMoveUpgrade(ctx context.Context, clusterConfig *v1alpha1.Cluster, cluster *types.Cluster) error {
+	return nil
+}
+
 func (p *Provider) RunPostControlPlaneUpgrade(ctx context.Context, oldClusterSpec *cluster.Spec, clusterSpec *cluster.Spec, workloadCluster *types.Cluster, managementCluster *types.Cluster) error {
 	// @TODO: do we need this for bare metal upgrade?
 

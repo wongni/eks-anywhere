@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -11,8 +12,10 @@ import (
 
 	"github.com/golang/mock/gomock"
 	etcdv1 "github.com/mrajashree/etcdadm-controller/api/v1beta1"
+	. "github.com/onsi/gomega"
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	controlplanev1 "sigs.k8s.io/cluster-api/controlplane/kubeadm/api/v1beta1"
 
@@ -1566,7 +1569,8 @@ func TestProviderUpdateSecrets(t *testing.T) {
 			t.Fatalf("Failed to read embed eksd release: %s", err)
 		}
 
-		kubectl.EXPECT().GetNamespace(ctx, gomock.Any(), constants.EksaSystemNamespace).Return(nil)
+		kubectl.EXPECT().GetSecret(ctx, gomock.Any(), gomock.Any()).AnyTimes().Return(nil, errors.New("not found"))
+		kubectl.EXPECT().GetNamespace(ctx, gomock.Any(), gomock.Any()).Return(nil)
 		kubectl.EXPECT().ApplyKubeSpecFromBytes(ctx, gomock.Any(), expectedSecretsYaml)
 
 		if err := provider.SetupAndValidateCreateCluster(ctx, clusterSpec); err != nil {
@@ -1576,5 +1580,75 @@ func TestProviderUpdateSecrets(t *testing.T) {
 		if err := provider.UpdateSecrets(ctx, cluster); err != nil {
 			t.Fatalf("failed to update secrets: %v", err)
 		}
+	}
+}
+
+func TestProviderUpdateSecretsWhenSecretAlreadyExists(t *testing.T) {
+	existingSecret := &v1.Secret{
+		TypeMeta:   metav1.TypeMeta{},
+		ObjectMeta: metav1.ObjectMeta{Name: "global"},
+		Data: map[string][]byte{
+			"uri":       []byte("http://127.16.0.1:8080/client/api"),
+			"apikey":    []byte("test-key1"),
+			"secretkey": []byte("test-secret1"),
+			"verifyssl": []byte("false"),
+		},
+	}
+	existingSecretChanged := existingSecret.DeepCopy()
+	existingSecretChanged.Data["uri"] = []byte("http://127.16.0.2:8080/client/api")
+
+	tests := []struct {
+		testName       string
+		configPath     string
+		wantErr        bool
+		existingSecret *v1.Secret
+	}{
+		{
+			testName:       "Secret unchanged",
+			configPath:     defaultConfigPath,
+			wantErr:        false,
+			existingSecret: existingSecret,
+		},
+		{
+			testName:       "Secret changed",
+			configPath:     defaultConfigPath,
+			wantErr:        true,
+			existingSecret: existingSecretChanged,
+		},
+	}
+
+	mockCtrl := gomock.NewController(t)
+	ctx := context.Background()
+	cluster := &types.Cluster{}
+	clusterSpec := givenClusterSpec(t, testClusterConfigMainFilename)
+
+	datacenterConfig := givenDatacenterConfig(t, testClusterConfigMainFilename)
+	machineConfigs := givenMachineConfigs(t, testClusterConfigMainFilename)
+	cmk := givenWildcardCmk(mockCtrl)
+
+	for _, test := range tests {
+		t.Run(test.testName, func(t *testing.T) {
+			tt := NewWithT(t)
+			saveContext(t, test.configPath)
+			kubectl := mocks.NewMockProviderKubectlClient(mockCtrl)
+			kubectl.EXPECT().GetSecret(ctx, existingSecret.Name, gomock.Any()).AnyTimes().Return(test.existingSecret, nil)
+			kubectl.EXPECT().GetNamespace(ctx, gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
+			kubectl.EXPECT().ApplyKubeSpecFromBytes(ctx, gomock.Any(), gomock.Any()).AnyTimes()
+			provider := newProviderWithKubectl(t, datacenterConfig, machineConfigs, clusterSpec.Cluster, kubectl, cmk)
+			if provider == nil {
+				t.Fatalf("provider object is nil")
+			}
+
+			if err := provider.SetupAndValidateCreateCluster(ctx, clusterSpec); err != nil {
+				t.Fatalf("provider.SetupAndValidateCreateCluster() err = %v, want err = nil", err)
+			}
+
+			err := provider.UpdateSecrets(ctx, cluster)
+			if test.wantErr {
+				tt.Expect(err).NotTo(BeNil())
+			} else {
+				tt.Expect(err).To(BeNil())
+			}
+		})
 	}
 }
